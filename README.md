@@ -74,6 +74,42 @@ Per-pod stable DNS for the StatefulSet: `postgres-0.postgres.microservices.svc.c
 
 > The Postgres password ships as `change-me-in-prod` — replace before any non-local use.
 
+## Storage
+
+PVCs in this repo (`redis-data` in [infra/data/database/pvc.yaml](infra/data/database/pvc.yaml) and the `volumeClaimTemplates` in the postgres StatefulSet) request storage without naming a specific backend. The cluster's default StorageClass decides what physical disk is provisioned. To pin them to **AWS EBS**, define a StorageClass backed by the EBS CSI driver and reference it from the PVC.
+
+```yaml
+# StorageClass — defined once per cluster
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ebs-gp3
+provisioner: ebs.csi.aws.com   # requires the AWS EBS CSI driver
+parameters:
+  type: gp3
+  fsType: ext4
+  encrypted: "true"
+volumeBindingMode: WaitForFirstConsumer   # provision in the pod's AZ
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+```
+
+Then on the PVC (or `volumeClaimTemplates` entry):
+
+```yaml
+spec:
+  accessModes:
+    - ReadWriteOnce          # EBS is single-node attach
+  storageClassName: ebs-gp3  # <-- selects the EBS-backed class
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+Container `volumeMounts` don't change — Redis still writes to `/data`, postgres to `/var/lib/postgresql/data`; the bytes now land on a CSI-provisioned EBS volume attached to the pod's node.
+
+**Prereqs:** EBS CSI driver installed (EKS add-on `aws-ebs-csi-driver`) and node IAM role with `ec2:CreateVolume` / `AttachVolume` / `DeleteVolume` permissions. EBS volumes are AZ-locked — `WaitForFirstConsumer` ensures the volume is created in the same AZ as the scheduled pod, and `ReadWriteOnce` is required since EBS can't be multi-attached across nodes.
+
 ## Network policies
 
 `infra/cluster/network-policies/` enforces a deny-by-default posture, then re-opens specific paths:
