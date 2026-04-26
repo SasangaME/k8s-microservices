@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>k8s-microservices</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; }
+      input, button { font-size: 1rem; padding: 0.4rem; }
+      li { margin: 0.2rem 0; }
+    </style>
+  </head>
+  <body>
+    <h1>Items</h1>
+    <form id="f">
+      <input id="name" placeholder="item name" required />
+      <button type="submit">Enqueue</button>
+    </form>
+    <ul id="items"></ul>
+    <script>
+      async function refresh() {
+        const r = await fetch("/api/items");
+        const items = await r.json();
+        document.getElementById("items").innerHTML =
+          items.map(i => `<li>#${i.id} — ${i.name}</li>`).join("");
+      }
+      document.getElementById("f").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const name = document.getElementById("name").value;
+        await fetch("/api/jobs", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+        document.getElementById("name").value = "";
+        setTimeout(refresh, 500);
+      });
+      refresh();
+    </script>
+  </body>
+</html>

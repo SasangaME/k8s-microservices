@@ -1,0 +1,129 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: microservices
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush        5
+        Daemon       Off
+        Log_Level    info
+        Parsers_File parsers.conf
+    [INPUT]
+        Name              tail
+        Path              /var/log/api/*.log
+        Tag               api.*
+        Refresh_Interval  5
+    [OUTPUT]
+        Name   stdout
+        Match  *
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: microservices
+  labels:
+    app: api
+    tier: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+        tier: backend
+    spec:
+      initContainers:
+        # Wait for PostgreSQL (resolved via headless service DNS) before API starts.
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z postgres.microservices.svc.cluster.local 5432; do
+                echo "waiting for postgres..."; sleep 2;
+              done
+        - name: wait-for-redis
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z redis.microservices.svc.cluster.local 6379; do
+                echo "waiting for redis..."; sleep 2;
+              done
+      containers:
+        - name: api
+          image: api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: POSTGRES_HOST
+              value: "postgres.microservices.svc.cluster.local"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              value: "appdb"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: REDIS_HOST
+              value: "redis.microservices.svc.cluster.local"
+            - name: REDIS_PORT
+              value: "6379"
+            # ExternalName service — resolves to RDS endpoint outside the cluster.
+            - name: ANALYTICS_DB_HOST
+              value: "analytics-db.microservices.svc.cluster.local"
+          volumeMounts:
+            - name: api-logs
+              mountPath: /var/log/api
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+        # Sidecar: Fluent Bit reads /var/log/api shared via emptyDir and forwards logs.
+        - name: fluent-bit
+          image: fluent/fluent-bit:3.0
+          volumeMounts:
+            - name: api-logs
+              mountPath: /var/log/api
+              readOnly: true
+            - name: fluent-bit-config
+              mountPath: /fluent-bit/etc/
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      volumes:
+        - name: api-logs
+          emptyDir: {}
+        - name: fluent-bit-config
+          configMap:
+            name: fluent-bit-config

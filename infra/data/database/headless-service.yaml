@@ -1,0 +1,34 @@
+# Headless Service (clusterIP: None) — DNS returns the Pod IPs directly,
+# enabling stable per-Pod DNS names like postgres-0.postgres.microservices.svc.cluster.local.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: microservices
+  labels:
+    app: postgres
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+# Standard ClusterIP for Redis — clients use redis:6379 from inside the namespace.
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: microservices
+  labels:
+    app: redis
+spec:
+  type: ClusterIP
+  selector:
+    app: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379

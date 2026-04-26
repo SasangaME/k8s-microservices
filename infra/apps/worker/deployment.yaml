@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: microservices
+  labels:
+    app: worker
+    tier: backend
+spec:
+  # No Service is defined for the worker — it pulls jobs from a Redis queue
+  # rather than receiving inbound requests.
+  replicas: 3
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+        tier: backend
+    spec:
+      containers:
+        - name: worker
+          image: worker:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: REDIS_HOST
+              value: "redis.microservices.svc.cluster.local"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: QUEUE_NAME
+              value: "jobs"
+            - name: POSTGRES_HOST
+              value: "postgres.microservices.svc.cluster.local"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
