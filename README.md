@@ -1,6 +1,6 @@
 # k8s-microservices
 
-A multi-service application running on Kubernetes that demonstrates service discovery, stateful workloads, sidecars, network segmentation, and queue-based decoupling. Four workloads — `frontend`, `api`, `worker`, and `postgres`/`redis` — share a single namespace and communicate exclusively through cluster DNS.
+A multi-service application running on Kubernetes that demonstrates service discovery, stateful workloads, sidecars, network segmentation, and queue-based decoupling. Four workloads: `frontend`, `api`, `worker`, and `postgres`/`redis`  share a single namespace and communicate exclusively through cluster DNS.
 
 ## Architecture
 
